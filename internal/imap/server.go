@@ -1,13 +1,16 @@
 package imap
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"log"
 	"time"
 
 	"github.com/emersion/go-imap"
 	"github.com/emersion/go-imap/backend"
+	imapserver "github.com/emersion/go-imap/server"
 	"mailserver/internal/config"
 	"mailserver/internal/storage"
 )
@@ -27,8 +30,21 @@ type Mailbox struct {
 	cfg      *config.Config
 }
 
-func NewServer(cfg *config.Config) *imap.Server {
-	s := imap.NewServer(NewBackend(cfg))
+// BytesLiteral implements the imap.Literal interface
+type BytesLiteral struct {
+	data []byte
+}
+
+func (b *BytesLiteral) Len() int {
+	return len(b.data)
+}
+
+func (b *BytesLiteral) Read(p []byte) (int, error) {
+	return bytes.NewReader(b.data).Read(p)
+}
+
+func NewServer(cfg *config.Config) *imapserver.Server {
+	s := imapserver.New(NewBackend(cfg))
 	s.Addr = cfg.IMAPPort
 	s.AllowInsecureAuth = true
 	return s
@@ -47,13 +63,8 @@ func (b *Backend) Login(connInfo *imap.ConnInfo, username, password string) (bac
 	return &User{username: username, cfg: b.cfg}, nil
 }
 
-func (u *User) ListMailboxes(subscribed bool) (mailboxes []*imap.MailboxInfo, err error) {
-	mailboxInfo := &imap.MailboxInfo{
-		Attributes: nil,
-		Delimiter:  "/",
-		Name:       "INBOX",
-	}
-	return []*imap.MailboxInfo{mailboxInfo}, nil
+func (u *User) ListMailboxes(subscribed bool) (mailboxes []backend.Mailbox, err error) {
+	return []backend.Mailbox{&Mailbox{name: "INBOX", username: u.username, cfg: u.cfg}}, nil
 }
 
 func (u *User) GetMailbox(name string) (backend.Mailbox, error) {
@@ -127,7 +138,7 @@ func (mb *Mailbox) Check() error {
 	return nil
 }
 
-func (mb *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.FetchItem, ch chan *imap.Message) error {
+func (mb *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.FetchItem, ch chan<- *imap.Message) error {
 	defer close(ch)
 
 	s3Storage := storage.NewS3Storage(mb.cfg.S3Client, mb.cfg.S3Bucket)
@@ -150,11 +161,15 @@ func (mb *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fetc
 			Uid:    uint32(i + 1),
 		}
 
+		// Process requested items
 		for _, item := range items {
 			switch item {
+			case imap.FetchBody:
+				msg.Body[item] = &BytesLiteral{data: emailData}
 			case imap.FetchBodyStructure:
-				// Simplified: just store the raw body
-				msg.Body[item] = emailData
+				msg.Body[item] = &BytesLiteral{data: emailData}
+			case imap.FetchRFC822:
+				msg.Body[item] = &BytesLiteral{data: emailData}
 			}
 		}
 
@@ -182,7 +197,7 @@ func (mb *Mailbox) SearchMessages(uid bool, criteria *imap.SearchCriteria) ([]ui
 	return ids, nil
 }
 
-func (mb *Mailbox) CreateMessage(flags []string, date time.Time, body imap.Literal) error {
+func (mb *Mailbox) CreateMessage(flags []string, date time.Time, body io.Reader) error {
 	return fmt.Errorf("not implemented")
 }
 
