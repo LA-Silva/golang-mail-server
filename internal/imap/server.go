@@ -63,6 +63,10 @@ func (b *Backend) Login(connInfo *imap.ConnInfo, username, password string) (bac
 	return &User{username: username, cfg: b.cfg}, nil
 }
 
+func (u *User) Username() string {
+	return u.username
+}
+
 func (u *User) ListMailboxes(subscribed bool) (mailboxes []backend.Mailbox, err error) {
 	return []backend.Mailbox{&Mailbox{name: "INBOX", username: u.username, cfg: u.cfg}}, nil
 }
@@ -197,7 +201,7 @@ func (mb *Mailbox) SearchMessages(uid bool, criteria *imap.SearchCriteria) ([]ui
 	return ids, nil
 }
 
-func (mb *Mailbox) CreateMessage(flags []string, date time.Time, body io.Reader) error {
+func (mb *Mailbox) CreateMessage(flags []string, date time.Time, body imap.Literal) error {
 	return fmt.Errorf("not implemented")
 }
 
