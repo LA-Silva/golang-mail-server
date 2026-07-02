@@ -1,7 +1,7 @@
 .PHONY: help build clean test run install lint fmt vet docker-build docker-run
 
 # Variables
-BINARY_NAME=mailserver
+BINARY_NAME=bin/s3mail
 GO=go
 GOFLAGS=-v
 DOCKER_IMAGE=mailserver:latest
