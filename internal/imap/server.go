@@ -165,15 +165,15 @@ func (mb *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fetc
 		msg := &imap.Message{
 			SeqNum: uint32(i + 1),
 			Uid:    uint32(i + 1),
-			Body:   make(map[imap.FetchItem]imap.Literal),
+			Body:   make(map[*imap.BodySectionName]imap.Literal),
 		}
 
 		// Process requested items - store with proper keys
 		for _, item := range items {
 			switch item {
 			case imap.FetchBody, imap.FetchBodyStructure, imap.FetchRFC822:
-				// For these items, store the literal data
-				msg.Body[item] = &BytesLiteral{data: emailData}
+				// For these items, store the literal data with empty BodySectionName
+				msg.Body[&imap.BodySectionName{}] = &BytesLiteral{data: emailData}
 			}
 		}
 
