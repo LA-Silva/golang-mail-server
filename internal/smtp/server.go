@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 
 	"github.com/emersion/go-smtp"
 	"mailserver/internal/config"
@@ -23,34 +22,47 @@ type Session struct {
 
 func NewServer(cfg *config.Config) *smtp.Server {
 	backend := &Backend{cfg: cfg}
-	return smtp.NewServer(backend)
+	server := smtp.NewServer(backend)
+	server.Addr = cfg.SMTPPort
+	server.AllowInsecureAuth = true
+	return server
 }
 
-func (s *Backend) Login(state *smtp.ConnectionState, username, password string) (smtp.Session, error) {
-	if !s.cfg.ValidateUser(username, password) {
-		return nil, smtp.ErrAuthFailed
+// Implement Backend interface
+func (b *Backend) NewSession(c *smtp.Conn) (smtp.Session, error) {
+	return &Session{cfg: b.cfg}, nil
+}
+
+// Implement Session interface
+func (sess *Session) AuthPlain(username, password string) error {
+	if !sess.cfg.ValidateUser(username, password) {
+		return fmt.Errorf("invalid credentials")
 	}
 
-	log.Printf("SMTP: User %s logged in", username)
-	return &Session{username: username, cfg: s.cfg}, nil
-}
-
-func (s *Backend) AnonymousLogin(state *smtp.ConnectionState) (smtp.Session, error) {
-	return nil, smtp.ErrAuthRequired
+	sess.username = username
+	log.Printf("SMTP: User %s authenticated", username)
+	return nil
 }
 
 func (sess *Session) Mail(from string, opts *smtp.MailOptions) error {
-	log.Printf("SMTP: Receiving email from %s to user %s", from, sess.username)
+	if sess.username == "" {
+		return fmt.Errorf("not authenticated")
+	}
+
+	log.Printf("SMTP: User %s sending email from %s", sess.username, from)
 	return nil
 }
 
 func (sess *Session) Rcpt(to string, opts *smtp.RcptOptions) error {
-	// For simplicity, accept all recipients
 	log.Printf("SMTP: Email will be delivered to %s", to)
 	return nil
 }
 
 func (sess *Session) Data(r io.Reader) error {
+	if sess.username == "" {
+		return fmt.Errorf("not authenticated")
+	}
+
 	s3Storage := storage.NewS3Storage(sess.cfg.S3Client, sess.cfg.S3Bucket)
 
 	// Read email data
@@ -77,40 +89,4 @@ func (sess *Session) Reset() {
 func (sess *Session) Logout() error {
 	log.Printf("SMTP: User %s logged out", sess.username)
 	return nil
-}
-
-func (s *Backend) ListenAndServe() error {
-	return s.Listen("tcp", ":25", func(c net.Conn) error {
-		_, err := s.HandleConn(c)
-		return err
-	})
-}
-
-func (s *Backend) Listen(network, addr string, callback func(net.Conn) error) error {
-	listener, err := net.Listen(network, addr)
-	if err != nil {
-		return err
-	}
-	defer listener.Close()
-
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			return err
-		}
-
-		go func() {
-			if err := callback(conn); err != nil {
-				log.Printf("SMTP error: %v", err)
-			}
-		}()
-	}
-}
-
-func (s *Backend) HandleConn(c net.Conn) (error, error) {
-	session, err := smtp.NewSession(c, s)
-	if err != nil {
-		return err, nil
-	}
-	return session.Serve(), nil
 }
