@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"log"
 	"time"
 
@@ -63,12 +62,14 @@ func (b *Backend) Login(connInfo *imap.ConnInfo, username, password string) (bac
 	return &User{username: username, cfg: b.cfg}, nil
 }
 
+// Implement backend.User interface
 func (u *User) Username() string {
 	return u.username
 }
 
 func (u *User) ListMailboxes(subscribed bool) (mailboxes []backend.Mailbox, err error) {
-	return []backend.Mailbox{&Mailbox{name: "INBOX", username: u.username, cfg: u.cfg}}, nil
+	inbox := &Mailbox{name: "INBOX", username: u.username, cfg: u.cfg}
+	return []backend.Mailbox{inbox}, nil
 }
 
 func (u *User) GetMailbox(name string) (backend.Mailbox, error) {
@@ -95,6 +96,7 @@ func (u *User) Logout() error {
 	return nil
 }
 
+// Implement backend.Mailbox interface
 func (mb *Mailbox) Name() string {
 	return mb.name
 }
@@ -165,15 +167,12 @@ func (mb *Mailbox) ListMessages(uid bool, seqSet *imap.SeqSet, items []imap.Fetc
 			Uid:    uint32(i + 1),
 		}
 
-		// Process requested items
+		// Process requested items - store with proper keys
 		for _, item := range items {
 			switch item {
-			case imap.FetchBody:
-				msg.Body[item] = &BytesLiteral{data: emailData}
-			case imap.FetchBodyStructure:
-				msg.Body[item] = &BytesLiteral{data: emailData}
-			case imap.FetchRFC822:
-				msg.Body[item] = &BytesLiteral{data: emailData}
+			case imap.FetchBody, imap.FetchBodyStructure, imap.FetchRFC822:
+				// For these items, store the literal data
+				msg.Body[&imap.BodySectionName{}} = &BytesLiteral{data: emailData}
 			}
 		}
 
