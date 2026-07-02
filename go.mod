@@ -4,12 +4,10 @@ go 1.21
 
 require (
 	github.com/emersion/go-imap v1.2.1
-	github.com/emersion/go-imap-move v0.0.0-20210907172020-fe4558f9647a
 	github.com/emersion/go-sasl v0.0.0-20220912192801-b6b5a542f091
 	github.com/emersion/go-smtp v0.20.1
 	github.com/aws/aws-sdk-go-v2 v1.24.1
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.47.5
-	github.com/aws/smithy-go v1.19.0
 	github.com/google/uuid v1.5.0
 )
 
